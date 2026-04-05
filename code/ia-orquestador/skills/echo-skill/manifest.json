@@ -1,0 +1,17 @@
+﻿{
+  "name": "echo-skill",
+  "version": "1.0.0",
+  "type": "sdd",
+  "entrypoint": "/opt/ia-orquestador/skills/echo-skill/skill.sh",
+  "path": "/opt/ia-orquestador/skills/echo-skill",
+  "metadata": {
+    "capabilities": ["text", "debug"],
+    "tags": ["example", "test"],
+    "description": "Simple echo skill for testing - returns input text",
+    "extra": {
+      "author": "IA_Orquestador",
+      "license": "MIT"
+    }
+  },
+  "status": "active"
+}

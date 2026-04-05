@@ -1,0 +1,15 @@
+﻿apiVersion: v1
+kind: Service
+metadata:
+  name: ia-orquestador
+  labels:
+    app: ia-orquestador
+spec:
+  type: ClusterIP
+  selector:
+    app: ia-orquestador
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

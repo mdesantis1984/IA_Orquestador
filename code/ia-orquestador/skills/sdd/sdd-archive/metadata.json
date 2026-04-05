@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-archive",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Finalize SDD workflow: sync specs, archive decisions, update docs, close tasks",
+  "tags": ["sdd", "orchestration", "archive", "documentation", "learning"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:27:00Z",
+  "phase": "archive",
+  "dependencies": ["sdd-verify"],
+  "outputs": ["archive_summary.md", "updated_docs.md", "closed_tasks.txt"],
+  "estimated_duration_seconds": 60
+}

@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-apply",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Execute implementation tasks: write code, create commits/PRs, run tests, trigger CI/CD",
+  "tags": ["sdd", "orchestration", "implementation", "automation"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:25:00Z",
+  "phase": "apply",
+  "dependencies": ["sdd-tasks"],
+  "outputs": ["code_changes", "commit_log.txt", "pr_url.txt", "ci_status.txt"],
+  "estimated_duration_seconds": 300
+}

@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-tasks",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Break down design into granular tasks: PRs, GitHub issues, branches, conventional commits",
+  "tags": ["sdd", "orchestration", "planning", "tasks"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:24:00Z",
+  "phase": "tasks",
+  "dependencies": ["sdd-design"],
+  "outputs": ["tasks.yaml", "github_issues.md", "branch_strategy.md", "commit_conventions.md"],
+  "estimated_duration_seconds": 90
+}

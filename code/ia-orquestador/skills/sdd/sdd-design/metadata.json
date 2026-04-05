@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-design",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Technical design: component diagrams, data models, interface contracts, ADRs",
+  "tags": ["sdd", "orchestration", "design", "architecture"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:23:00Z",
+  "phase": "design",
+  "dependencies": ["sdd-spec"],
+  "outputs": ["architecture.md", "data_model.md", "interface_contracts.md", "adr.md"],
+  "estimated_duration_seconds": 120
+}

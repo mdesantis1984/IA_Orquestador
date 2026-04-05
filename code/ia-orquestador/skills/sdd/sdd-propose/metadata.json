@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-propose",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Generate structured change proposals with alternatives, impact analysis, and recommendations",
+  "tags": ["sdd", "orchestration", "proposal", "decision"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:21:00Z",
+  "phase": "propose",
+  "dependencies": ["sdd-explore"],
+  "outputs": ["proposal.md"],
+  "estimated_duration_seconds": 45
+}

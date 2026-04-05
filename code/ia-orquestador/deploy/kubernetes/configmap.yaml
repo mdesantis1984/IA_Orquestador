@@ -1,0 +1,9 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ia-orquestador-config
+data:
+  # URL del servicio IA_Recuerdo (ajustar según namespace/cluster)
+  memory-url: "http://ia-recuerdo:7438"
+  # Nombre del proyecto en IA_Recuerdo
+  memory-project: "ia-orquestador"

@@ -1,0 +1,13 @@
+﻿{
+  "name": "sdd-explore",
+  "version": "1.0.0",
+  "type": "sdd",
+  "description": "Deep codebase investigation: complexity, test coverage, risky areas, architecture discovery",
+  "tags": ["sdd", "orchestration", "analysis", "discovery"],
+  "author": "IA_Orquestador",
+  "created_at": "2026-04-03T18:20:00Z",
+  "phase": "explore",
+  "dependencies": ["sdd-init"],
+  "outputs": ["discovery_notes.md", "risky_areas.md", "test_coverage_detail.md", "scope_suggestions.md"],
+  "estimated_duration_seconds": 60
+}

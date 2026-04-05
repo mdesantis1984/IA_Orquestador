@@ -1,0 +1,42 @@
+﻿# OrquestadorServidorMCP Configuration
+
+# Server settings
+server:
+  transport: "http"  # stdio or http
+  http_addr: ":8080"
+  
+# Database settings
+database:
+  path: "./orchestrator.db"
+  
+# IA_Recuerdo integration
+ia_recuerdo:
+  url: "http://127.0.0.1:7438"
+  project: "ia-orquestador"
+  
+# Logging
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json or text
+  
+# Rate limiting
+rate_limits:
+  per_user_rpm: 60
+  per_skill_rpm: 30
+  concurrent_calls: 10
+  
+# OAuth / OIDC (TODO)
+auth:
+  enabled: false
+  issuer_url: "https://auth.example.com"
+  client_id: ""
+  jwks_cache_ttl: 300
+  
+# Observability (TODO)
+metrics:
+  enabled: true
+  prometheus_addr: ":9090"
+  
+tracing:
+  enabled: false
+  otlp_endpoint: "http://localhost:4317"
