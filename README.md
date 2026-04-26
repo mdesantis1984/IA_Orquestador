@@ -1,6 +1,6 @@
 ﻿# IA_Orquestador
 
-> Servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y los conecta a memoria persistente mediante **IA_Recuerdo**.
+> CT203: servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y se conecta a memoria persistente mediante **IA_Recuerdo** en CT204.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org)
@@ -10,7 +10,7 @@
 
 ## ¿Qué hace?
 
-**IA_Orquestador** expone un servidor JSON-RPC 2.0 compatible con MCP que actúa como capa de infraestructura IA:
+**IA_Orquestador** actúa como capa de infraestructura IA en CT203:
 
 - Registra y ejecuta **skills** (herramientas de IA) dinámicamente
 - Soporta transporte **STDIO** (agentes locales) y **HTTP + SSE + WebSocket** (agentes remotos)
@@ -56,7 +56,7 @@ code/ia-orquestador/
 │   ├── transport/          # STDIO, HTTP+SSE, WebSocket
 │   ├── jsonrpc/            # Dispatcher JSON-RPC 2.0
 │   ├── skills/             # Registro dinámico de skills
-│   ├── engram/             # Cliente HTTP Engram
+│   ├── engram/             # Cliente HTTP IA_Recuerdo
 │   ├── db/                 # SQLite + PostgreSQL
 │   ├── auth/               # API key (SHA-256, bootstrap automático)
 │   ├── executor/           # Ejecución de skills externos
@@ -132,7 +132,7 @@ Todos los parámetros se pasan como flags:
 | `-db` | `./orchestrator.db` | Ruta SQLite |
 | `-db-driver` | `sqlite` | `sqlite` o `postgres` |
 | `-db-dsn` | `` | DSN PostgreSQL |
-| `-engram` | `http://127.0.0.1:7438` | URL de IA_Recuerdo |
+| `-memory-url` | `http://127.0.0.1:7438` | URL de IA_Recuerdo |
 | `-project` | `ia-orquestador` | Nombre de proyecto en IA_Recuerdo |
 | `-create-token` | `` | Crear API key con nombre dado y salir |
 | `-otel-exporter` | `none` | OTel traces: `none` \| `stdout` \| `otlp` \| `both` |
@@ -311,7 +311,7 @@ chown orquestador: /var/lib/ia-orquestador
 cp deploy/systemd/ia-orquestador.service /etc/systemd/system/
 
 # 5. Editar la URL de IA_Recuerdo
-# ExecStart=... -engram=http://<ia-recuerdo-host>:7438
+# ExecStart=... -memory-url=http://<ia-recuerdo-host>:7438
 
 # 6. Arrancar
 systemctl daemon-reload
@@ -319,7 +319,7 @@ systemctl enable --now ia-orquestador
 systemctl status ia-orquestador
 ```
 
-El servicio escucha en `:7438` por defecto (configurable en el unit file).
+El servicio escucha en `:7440` en CT203 (configurable en el unit file).
 
 ---
 
@@ -354,20 +354,11 @@ make vet        # go vet
 
 ---
 
-## Agradecimientos
+## Notas
 
-Este proyecto usa **IA_Recuerdo** como memoria persistente y se inspira en los patrones SDD de **Alan Buscaglia** y la comunidad **Gentleman Programming**. IA_Recuerdo está construido sobre [Engram](https://github.com/Gentleman-Programming/engram).
-
-| Proyecto | Descripción |
-|----------|-------------|
-| [Engram](https://github.com/Gentleman-Programming/engram) ⭐ 2.2k | Memoria persistente para agentes IA |
-| [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) ⭐ 1.6k | Stack IA completo para cualquier agente |
-| [Gentleman Skills](https://github.com/Gentleman-Programming/Gentleman-Skills) | Skills curados para Claude Code, OpenCode, VS Code |
-| [Agent Teams Lite](https://github.com/Gentleman-Programming/agent-teams-lite) | Orquestación SDD, 9 sub-agentes, zero deps |
-
-🎥 [YouTube @GentlemanProgramming](https://www.youtube.com/@GentlemanProgramming) · 🌐 [alan-buscaglia.vercel.app](https://alan-buscaglia.vercel.app/home) · 🔗 [doras.to/gentleman-programming](https://doras.to/gentleman-programming)
-
-> *"Concepts over code. Foundations over frameworks."* — Alan Buscaglia
+- CT203 es el orquestador.
+- CT204 es la memoria persistente.
+- `-memory-url` apunta a `IA_Recuerdo`; `Engram` queda solo como nombre histórico del paquete interno.
 
 ---
 
