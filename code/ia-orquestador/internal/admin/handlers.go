@@ -37,7 +37,7 @@ func New(skillReg *skills.Registry, authValidator *auth.Validator) *Handler {
 // RegisterRoutes registers all admin routes on mux, wrapped with the auth middleware.
 // Uses Go 1.22+ enhanced ServeMux patterns (METHOD /path/{id}).
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	authed := h.auth.Middleware
+	authed := h.auth.WithScopes("admin")
 
 	// Skills CRUD
 	mux.Handle("GET /api/v1/skills", authed(http.HandlerFunc(h.listSkills)))

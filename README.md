@@ -1,6 +1,6 @@
 ﻿# IA_Orquestador
 
-> Servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y los conecta a memoria persistente mediante **IA_Recuerdo**.
+> Servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y se integra con **IA_Recuerdo** para memoria persistente.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org)
@@ -14,7 +14,7 @@
 
 - Registra y ejecuta **skills** (herramientas de IA) dinámicamente
 - Soporta transporte **STDIO** (agentes locales) y **HTTP + SSE + WebSocket** (agentes remotos)
-- Persiste estado en **SQLite** (default) o **PostgreSQL** (multi-nodo)
+- Persiste estado en **PostgreSQL**
 - Se integra con **IA_Recuerdo** para memoria persistente entre sesiones
 - Expone **API REST de administración** (`/api/v1/skills`)
 - Autenticación por **API key** con bootstrap automático en primer arranque
@@ -36,7 +36,7 @@ Cliente IA (Claude / Cursor / VS Code Copilot)
          │  Skill Registry      │──►  Proceso externo (bash/sh)
          │  Session Manager     │
          │  Auth (API Key)      │◄─── X-Api-Key header
-         │  SQLite / PostgreSQL │
+          │     PostgreSQL       │
          │  Metrics /metrics    │──►  Prometheus
          └──────────┬───────────┘
                     │ HTTP
@@ -56,8 +56,7 @@ code/ia-orquestador/
 │   ├── transport/          # STDIO, HTTP+SSE, WebSocket
 │   ├── jsonrpc/            # Dispatcher JSON-RPC 2.0
 │   ├── skills/             # Registro dinámico de skills
-│   ├── engram/             # Cliente HTTP Engram
-│   ├── db/                 # SQLite + PostgreSQL
+│   ├── db/                 # PostgreSQL
 │   ├── auth/               # API key (SHA-256, bootstrap automático)
 │   ├── executor/           # Ejecución de skills externos
 │   ├── admin/              # API REST /api/v1/skills
@@ -84,7 +83,7 @@ code/ia-orquestador/
 ```bash
 cd code/ia-orquestador
 
-make build          # SQLite, desarrollo
+make build          # Go, desarrollo
 make build-linux    # Linux amd64 (cross-compile)
 make build-postgres # Linux amd64, PostgreSQL
 ```
@@ -129,10 +128,10 @@ Todos los parámetros se pasan como flags:
 |------|---------|-------------|
 | `-transport` | `stdio` | `stdio` o `http` |
 | `-http-addr` | `:8080` | Dirección del servidor HTTP |
-| `-db` | `./orchestrator.db` | Ruta SQLite |
-| `-db-driver` | `sqlite` | `sqlite` o `postgres` |
+| `-db` | `postgres://...` | DSN PostgreSQL |
+| `-db-driver` | `postgres` | Solo `postgres` |
 | `-db-dsn` | `` | DSN PostgreSQL |
-| `-engram` | `http://127.0.0.1:7438` | URL de IA_Recuerdo |
+| `-memory-url` | `http://127.0.0.1:7438` | URL de IA_Recuerdo |
 | `-project` | `ia-orquestador` | Nombre de proyecto en IA_Recuerdo |
 | `-create-token` | `` | Crear API key con nombre dado y salir |
 | `-otel-exporter` | `none` | OTel traces: `none` \| `stdout` \| `otlp` \| `both` |
@@ -311,7 +310,7 @@ chown orquestador: /var/lib/ia-orquestador
 cp deploy/systemd/ia-orquestador.service /etc/systemd/system/
 
 # 5. Editar la URL de IA_Recuerdo
-# ExecStart=... -engram=http://<ia-recuerdo-host>:7438
+# ExecStart=... -memory-url=http://<ia-recuerdo-host>:7438
 
 # 6. Arrancar
 systemctl daemon-reload
@@ -344,7 +343,7 @@ make vet        # go vet
 | WebSocket | ✅ |
 | Skill registry + ejecución | ✅ |
 | IA_Recuerdo integration | ✅ |
-| SQLite (WAL) | ✅ |
+| PostgreSQL | ✅ |
 | PostgreSQL | ✅ build tag `postgres` |
 | API REST admin | ✅ |
 | Auth API key + Bearer token | ✅ |
@@ -356,11 +355,10 @@ make vet        # go vet
 
 ## Agradecimientos
 
-Este proyecto usa **IA_Recuerdo** como memoria persistente y se inspira en los patrones SDD de **Alan Buscaglia** y la comunidad **Gentleman Programming**. IA_Recuerdo está construido sobre [Engram](https://github.com/Gentleman-Programming/engram).
+Este proyecto usa **IA_Recuerdo** como memoria persistente y se inspira en los patrones SDD de **Alan Buscaglia** y la comunidad **Gentleman Programming**.
 
 | Proyecto | Descripción |
 |----------|-------------|
-| [Engram](https://github.com/Gentleman-Programming/engram) ⭐ 2.2k | Memoria persistente para agentes IA |
 | [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) ⭐ 1.6k | Stack IA completo para cualquier agente |
 | [Gentleman Skills](https://github.com/Gentleman-Programming/Gentleman-Skills) | Skills curados para Claude Code, OpenCode, VS Code |
 | [Agent Teams Lite](https://github.com/Gentleman-Programming/agent-teams-lite) | Orquestación SDD, 9 sub-agentes, zero deps |
@@ -374,4 +372,3 @@ Este proyecto usa **IA_Recuerdo** como memoria persistente y se inspira en los p
 ## Licencia
 
 [MIT](LICENSE) © 2026 mdesantis1984
-

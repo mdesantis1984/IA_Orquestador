@@ -32,8 +32,7 @@ import (
 var (
 	transportMode  = flag.String("transport", "stdio", "Transport mode: stdio or http")
 	httpAddr       = flag.String("http-addr", ":8080", "HTTP server address")
-	dbPath         = flag.String("db", "./orchestrator.db", "SQLite database path")
-	dbDriver       = flag.String("db-driver", "sqlite", "Database driver: sqlite or postgres")
+	dbDriver       = flag.String("db-driver", "postgres", "Database driver: postgres")
 	dbDSN          = flag.String("db-dsn", "", "PostgreSQL DSN (required when -db-driver=postgres)")
 	memoryURL      = flag.String("memory-url", "http://127.0.0.1:7438", "IA_Recuerdo service URL")
 	memoryKey      = flag.String("memory-key", "", "IA_Recuerdo API key (X-Api-Key header)")
@@ -69,7 +68,6 @@ func main() {
 
 	// Initialize database
 	database, err := db.Open(db.Config{
-		Path:   *dbPath,
 		Driver: *dbDriver,
 		DSN:    *dbDSN,
 	})

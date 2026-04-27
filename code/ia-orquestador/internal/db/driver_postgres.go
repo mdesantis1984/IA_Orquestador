@@ -1,6 +1,4 @@
-//go:build postgres
-
-// Package db — PostgreSQL driver registration (build with -tags postgres).
+// Package db — PostgreSQL driver registration.
 package db
 
 import (
@@ -34,11 +32,6 @@ func openPostgres(cfg Config) (*sql.DB, error) {
 	}
 	log.Printf("[DB] Opened PostgreSQL connection (pool max=25)")
 	return db, nil
-}
-
-// openSQLite is not available in the postgres build.
-func openSQLite(_ Config) (*sql.DB, error) {
-	return nil, fmt.Errorf("sqlite driver not compiled in; rebuild without -tags postgres")
 }
 
 // postgresInit sets session-level defaults for performance and safety.
