@@ -85,7 +85,7 @@ func main() {
 
 	// -create-token flag: generate a new API key and exit
 	if *createToken != "" {
-		key, err := authValidator.Generate(ctx, *createToken)
+		key, err := authValidator.Generate(ctx, *createToken, "admin")
 		if err != nil {
 			log.Fatalf("Failed to create API key: %v", err)
 		}
@@ -95,7 +95,7 @@ func main() {
 
 	// Bootstrap: if no API keys exist yet, generate one automatically
 	if count, _ := authValidator.CountKeys(ctx); count == 0 {
-		key, err := authValidator.Generate(ctx, "bootstrap")
+		key, err := authValidator.Generate(ctx, "bootstrap", "admin")
 		if err != nil {
 			log.Fatalf("Failed to generate bootstrap API key: %v", err)
 		}

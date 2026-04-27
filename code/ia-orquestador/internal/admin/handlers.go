@@ -144,13 +144,17 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name   string `json:"name"`
+		Scopes string `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		jsonError(w, "name is required", http.StatusBadRequest)
 		return
 	}
-	key, err := h.auth.Generate(r.Context(), body.Name)
+	if body.Scopes == "" {
+		body.Scopes = "admin"
+	}
+	key, err := h.auth.Generate(r.Context(), body.Name, body.Scopes)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return

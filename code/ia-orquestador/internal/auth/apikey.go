@@ -106,7 +106,12 @@ func (v *Validator) lookup(ctx context.Context, plainKey string) (*apiKeyRecord,
 
 // Generate creates a new API key, stores its SHA-256 hash in the DB, and
 // returns the plaintext key exactly once. The plaintext cannot be recovered.
-func (v *Validator) Generate(ctx context.Context, name string) (string, error) {
+// scopes is a comma-separated list of permissions (e.g. "admin,read,write").
+// If empty, defaults to "admin".
+func (v *Validator) Generate(ctx context.Context, name string, scopes string) (string, error) {
+	if scopes == "" {
+		scopes = "admin"
+	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("generate random bytes: %w", err)
@@ -118,8 +123,8 @@ func (v *Validator) Generate(ctx context.Context, name string) (string, error) {
 
 	_, err := v.db.ExecContext(ctx, `
 		INSERT INTO api_keys (id, name, key_hash, scopes, created_at)
-		VALUES ($1, $2, $3, 'admin', $4)
-	`, id, name, hash, now)
+		VALUES ($1, $2, $3, $4, $5)
+	`, id, name, hash, scopes, now)
 	if err != nil {
 		return "", fmt.Errorf("store api key: %w", err)
 	}

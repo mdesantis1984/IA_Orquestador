@@ -2,6 +2,7 @@
 // Exposes registered skills as standard MCP tools so VS Code / AI agents
 // can call them via the unified MCP protocol (2024-11-05 / 2025-03-26).
 //
+//	GET    /mcp  → SSE stream for server→client notifications (keep-alive)
 //	POST   /mcp  → JSON-RPC 2.0 (single request, plain JSON or SSE response)
 //	DELETE /mcp  → session termination (no-op, returns 200)
 //	OPTIONS /mcp → CORS preflight
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/thiscloud/ia-orquestador/internal/executor"
 	"github.com/thiscloud/ia-orquestador/pkg/types"
@@ -54,6 +56,8 @@ func (o *Orchestrator) RegisterMCPRoutes(mux *http.ServeMux) {
 func (o *Orchestrator) handleMCPDispatch(w http.ResponseWriter, r *http.Request) {
 	setMCPCORSHeaders(w, r)
 	switch r.Method {
+	case http.MethodGet:
+		o.handleMCPGet(w, r)
 	case http.MethodPost:
 		o.handleMCPPost(w, r)
 	case http.MethodDelete:
@@ -63,6 +67,51 @@ func (o *Orchestrator) handleMCPDispatch(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMCPGet implements the GET /mcp SSE channel defined by the MCP
+// Streamable HTTP 2025-03-26 spec. Clients open this stream to receive
+// server-initiated notifications (progress, cancellation ACKs, etc.).
+// The connection is kept alive with periodic comment pings; it closes when
+// the client disconnects or the server shuts down.
+func (o *Orchestrator) handleMCPGet(w http.ResponseWriter, r *http.Request) {
+	if !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // disable nginx proxy buffering
+
+	// Echo session ID so stateful clients can correlate this stream.
+	if sid := r.Header.Get("Mcp-Session-Id"); sid != "" {
+		w.Header().Set("Mcp-Session-Id", sid)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	// Initial ping to confirm the stream is open.
+	fmt.Fprintf(w, ": ping\n\n")
+	flusher.Flush()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			fmt.Fprintf(w, ": ping\n\n")
+			flusher.Flush()
+		}
 	}
 }
 
@@ -106,6 +155,13 @@ func (o *Orchestrator) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp = o.mcpToolsCall(r.Context(), &req)
+
+	case "tools/cancel", "mcp.tools.cancel":
+		if isNotification {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		resp = o.mcpToolsCancel(&req)
 
 	case "notifications/initialized",
 		"notifications/cancelled",
@@ -241,6 +297,12 @@ func (o *Orchestrator) mcpToolsCall(ctx context.Context, req *mcpRPCRequest) *mc
 	})
 }
 
+func (o *Orchestrator) mcpToolsCancel(req *mcpRPCRequest) *mcpRPCResponse {
+	// Executions are currently synchronous — nothing to cancel in-flight.
+	// Return a compliant response so clients don't error.
+	return mcpOK(req.ID, map[string]interface{}{"cancelled": false})
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
@@ -279,7 +341,7 @@ func setMCPCORSHeaders(w http.ResponseWriter, r *http.Request) {
 		origin = "*"
 	}
 	w.Header().Set("Access-Control-Allow-Origin", origin)
-	w.Header().Set("Access-Control-Allow-Methods", "POST, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Key, Mcp-Session-Id")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Key, Mcp-Session-Id, Accept")
 	w.Header().Set("Access-Control-Max-Age", "86400")
 }
