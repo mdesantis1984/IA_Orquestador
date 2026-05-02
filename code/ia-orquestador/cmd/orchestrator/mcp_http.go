@@ -76,11 +76,6 @@ func (o *Orchestrator) handleMCPDispatch(w http.ResponseWriter, r *http.Request)
 // The connection is kept alive with periodic comment pings; it closes when
 // the client disconnects or the server shuts down.
 func (o *Orchestrator) handleMCPGet(w http.ResponseWriter, r *http.Request) {
-	if !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

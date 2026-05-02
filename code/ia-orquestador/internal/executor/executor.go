@@ -1,5 +1,5 @@
 ﻿// Package executor handles MCP skill execution with multiple backends:
-//   - skill-content : SDD / DotNet skills — returns SKILL.md for AI context
+//   - skill-content : SDD / DotNet / Wasm skills — returns SKILL.md for AI context
 //   - local-exec    : Shell/binary scripts — runs the entrypoint process
 //   - http          : Remote HTTP skill — POSTs input JSON to the entrypoint URL
 //   - mock          : Fallback when no real execution is possible
@@ -49,8 +49,8 @@ func Execute(ctx context.Context, skill *types.Skill, input json.RawMessage, tim
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
-	// SDD and DotNet skills deliver SKILL.md content as AI context.
-	if skill.Type == types.SkillTypeSDD || skill.Type == types.SkillTypeDotNet {
+	// SDD, DotNet and Wasm skills deliver SKILL.md content as AI context.
+	if skill.Type == types.SkillTypeSDD || skill.Type == types.SkillTypeDotNet || skill.Type == types.SkillTypeWASM {
 		return executeSkillContent(execCtx, skill, input)
 	}
 

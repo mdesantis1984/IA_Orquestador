@@ -18,38 +18,48 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/thiscloud/ia-orquestador/internal/audit"
 	"github.com/thiscloud/ia-orquestador/internal/auth"
 	"github.com/thiscloud/ia-orquestador/internal/skills"
 	"github.com/thiscloud/ia-orquestador/pkg/types"
 )
 
+const ctxKeyID = auth.ContextKeyUserID
+
 // Handler implements the admin REST API.
 type Handler struct {
-	skills *skills.Registry
-	auth   *auth.Validator
+	skills      *skills.Registry
+	auth        *auth.Validator
+	auditLogger *audit.Logger
 }
 
 // New creates a new admin Handler.
-func New(skillReg *skills.Registry, authValidator *auth.Validator) *Handler {
-	return &Handler{skills: skillReg, auth: authValidator}
+func New(skillReg *skills.Registry, authValidator *auth.Validator, auditLogger *audit.Logger) *Handler {
+	return &Handler{skills: skillReg, auth: authValidator, auditLogger: auditLogger}
 }
 
 // RegisterRoutes registers all admin routes on mux, wrapped with the auth middleware.
 // Uses Go 1.22+ enhanced ServeMux patterns (METHOD /path/{id}).
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	authed := h.auth.WithScopes("admin")
+	readAuth := h.auth.WithScopes("read", "admin")
+	writeAuth := h.auth.WithScopes("write", "admin")
+	deleteAuth := h.auth.WithScopes("write", "admin")
 
-	// Skills CRUD
-	mux.Handle("GET /api/v1/skills", authed(http.HandlerFunc(h.listSkills)))
-	mux.Handle("POST /api/v1/skills", authed(http.HandlerFunc(h.createSkill)))
-	mux.Handle("GET /api/v1/skills/{id}", authed(http.HandlerFunc(h.getSkill)))
-	mux.Handle("PATCH /api/v1/skills/{id}", authed(http.HandlerFunc(h.updateSkill)))
-	mux.Handle("DELETE /api/v1/skills/{id}", authed(http.HandlerFunc(h.deleteSkill)))
+	// Skills: read (list + get)
+	mux.Handle("GET /api/v1/skills", readAuth(http.HandlerFunc(h.listSkills)))
+	mux.Handle("GET /api/v1/skills/{id}", readAuth(http.HandlerFunc(h.getSkill)))
 
-	// Token management
-	mux.Handle("GET /api/v1/tokens", authed(http.HandlerFunc(h.listTokens)))
-	mux.Handle("POST /api/v1/tokens", authed(http.HandlerFunc(h.createToken)))
-	mux.Handle("DELETE /api/v1/tokens/{id}", authed(http.HandlerFunc(h.revokeToken)))
+	// Skills: write (create + update)
+	mux.Handle("POST /api/v1/skills", writeAuth(http.HandlerFunc(h.createSkill)))
+	mux.Handle("PATCH /api/v1/skills/{id}", writeAuth(http.HandlerFunc(h.updateSkill)))
+
+	// Skills: delete
+	mux.Handle("DELETE /api/v1/skills/{id}", deleteAuth(http.HandlerFunc(h.deleteSkill)))
+
+	// Tokens: admin only (read + write)
+	mux.Handle("GET /api/v1/tokens", h.auth.WithScopes("admin")(http.HandlerFunc(h.listTokens)))
+	mux.Handle("POST /api/v1/tokens", h.auth.WithScopes("admin")(http.HandlerFunc(h.createToken)))
+	mux.Handle("DELETE /api/v1/tokens/{id}", h.auth.WithScopes("admin")(http.HandlerFunc(h.revokeToken)))
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
@@ -93,6 +103,9 @@ func (h *Handler) createSkill(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if h.auditLogger != nil {
+		h.auditLogger.Log(r.Context(), userIDFromContext(r), "skill.create", skill.ID, map[string]string{"name": skill.Name})
+	}
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, skill)
 }
@@ -117,16 +130,23 @@ func (h *Handler) updateSkill(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if h.auditLogger != nil {
+		h.auditLogger.Log(r.Context(), userIDFromContext(r), "skill.update", id, nil)
+	}
 	skill, _ := h.skills.Get(id)
 	jsonOK(w, skill)
 }
 
 func (h *Handler) deleteSkill(w http.ResponseWriter, r *http.Request) {
-	if err := h.skills.Update(r.Context(), r.PathValue("id"), map[string]interface{}{
+	id := r.PathValue("id")
+	if err := h.skills.Update(r.Context(), id, map[string]interface{}{
 		"status": string(types.SkillStatusDeprecated),
 	}); err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if h.auditLogger != nil {
+		h.auditLogger.Log(r.Context(), userIDFromContext(r), "skill.delete", id, nil)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -159,6 +179,9 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if h.auditLogger != nil {
+		h.auditLogger.Log(r.Context(), userIDFromContext(r), "token.create", body.Name, map[string]string{"scopes": body.Scopes})
+	}
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]string{
 		"key":  key,
@@ -167,9 +190,13 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) revokeToken(w http.ResponseWriter, r *http.Request) {
-	if err := h.auth.Revoke(r.Context(), r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := h.auth.Revoke(r.Context(), id); err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if h.auditLogger != nil {
+		h.auditLogger.Log(r.Context(), userIDFromContext(r), "token.revoke", id, nil)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -185,4 +212,11 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+}
+
+func userIDFromContext(r *http.Request) string {
+	if v := r.Context().Value(ctxKeyID); v != nil {
+		return v.(string)
+	}
+	return ""
 }

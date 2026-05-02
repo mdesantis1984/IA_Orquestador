@@ -53,24 +53,22 @@ Cliente IA (Claude / Cursor / VS Code Copilot)
 code/ia-orquestador/
 ├── cmd/orchestrator/       # main.go — flags, bootstrap, wiring
 ├── internal/
-│   ├── transport/          # STDIO, HTTP+SSE, WebSocket
+│   ├── transport/          # STDIO, HTTP+SSE
 │   ├── jsonrpc/            # Dispatcher JSON-RPC 2.0
 │   ├── skills/             # Registro dinámico de skills
 │   ├── db/                 # PostgreSQL
 │   ├── auth/               # API key (SHA-256, bootstrap automático)
 │   ├── executor/           # Ejecución de skills externos
 │   ├── admin/              # API REST /api/v1/skills
-│   └── metrics/            # Endpoint /metrics (Prometheus)
+│   ├── metrics/            # Endpoint /metrics (Prometheus)
+│   ├── audit/              # Logging de auditoría
+│   └── tracing/            # OpenTelemetry integration
 ├── pkg/
 │   ├── types/              # Tipos MCP
 │   └── errors/             # Códigos de error MCP
-├── skills/
-│   ├── dotnet/             # 18 skills .NET (Blazor, MAUI, Clean Arch, etc.)
-│   ├── sdd/                # 9 skills SDD (Spec-Driven Development)
-│   └── echo-skill/         # Skill de ejemplo
+├── skills/                 # Skills locales (metadata.json + SKILL.md)
 ├── deploy/
-│   ├── systemd/            # Unit file para Linux / Proxmox CT
-│   └── kubernetes/         # Manifiestos K8s
+│   └── systemd/            # Unit file para Linux / Proxmox CT
 ├── configs/                # config.example.yaml
 ├── migrations/             # Migraciones de DB
 └── scripts/                # register-skill.sh, test-e2e.sh
@@ -282,13 +280,15 @@ scripts/bulk-register-skills.sh skills/dotnet/
 
 ## Skills incluidos
 
+Total: **26 skills** — 18 .NET + 8 SDD
+
 ### .NET (18 skills)
 
-`blazor-server` · `blazor-wasm` · `csharp-expert` · `dotnet-architecture` · `minimal-api` · `microservices-dotnet` · `rest-webapi` · `mudblazor` · `maui-expert` · `mvvm-patterns` · `mvc-dotnet` · `onion-architecture` · `solid-principles` · `wpf-expert` · `aspire-dotnet` · `aspx-legacy` · `soap-wcf`
+`aspire-dotnet` · `aspx-legacy` · `blazor-server` · `blazor-wasm` · `csharp-expert` · `dotnet-architecture` · `minimal-api` · `microservices-dotnet` · `mudblazor` · `maui-expert` · `mvvm-patterns` · `mvc-dotnet` · `onion-architecture` · `rest-webapi` · `soap-wcf` · `solid-principles` · `wpf-expert`
 
-### SDD — Spec-Driven Development (9 skills)
+### SDD — Spec-Driven Development (8 skills)
 
-`sdd-init` · `sdd-explore` · `sdd-design` · `sdd-spec` · `sdd-propose` · `sdd-tasks` · `sdd-apply` · `sdd-verify` · `sdd-archive`
+`sdd-init` · `sdd-explore` · `sdd-design` · `sdd-propose` · `sdd-spec` · `sdd-tasks` · `sdd-apply` · `sdd-verify` · `sdd-archive`
 
 ---
 
@@ -339,17 +339,18 @@ make vet        # go vet
 |------------|--------|
 | JSON-RPC 2.0 dispatcher | ✅ |
 | STDIO | ✅ |
-| HTTP + SSE | ✅ |
-| WebSocket | ✅ |
+| HTTP + SSE (MCP 2025-03-26) | ✅ |
 | Skill registry + ejecución | ✅ |
+| Skill hot-reload desde disk | ✅ |
+| Audit logging | ✅ |
 | IA_Recuerdo integration | ✅ |
 | PostgreSQL | ✅ |
-| PostgreSQL | ✅ build tag `postgres` |
 | API REST admin | ✅ |
 | Auth API key + Bearer token | ✅ |
 | Métricas Prometheus `/metrics` | ✅ |
 | OpenTelemetry traces (stdout/OTLP) | ✅ |
-| Skill hot-reload (polling DB) | ✅ |
+| MCP tools/cancel support | ✅ |
+| WebSocket (legacy) | ⏸ deprecated |
 
 ---
 

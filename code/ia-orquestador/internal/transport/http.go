@@ -89,13 +89,14 @@ func (t *HTTPTransport) Start(ctx context.Context) error {
 		t.routeRegistrar(mux)
 	}
 
-	t.server = &http.Server{
-		Addr:         t.addr,
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+		t.server = &http.Server{
+			Addr:         t.addr,
+			Handler:      mux,
+			ReadTimeout:  15 * time.Second,
+			// SSE streams must stay open indefinitely, so we avoid a write timeout.
+			WriteTimeout: 0,
+			IdleTimeout:  60 * time.Second,
+		}
 
 	t.wg.Add(1)
 	go func() {

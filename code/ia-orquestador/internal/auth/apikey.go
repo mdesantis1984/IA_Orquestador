@@ -24,6 +24,8 @@ const (
 	ctxKeyScopes ctxKey = "auth_scopes"
 )
 
+const ContextKeyUserID ctxKey = "auth_id"
+
 type apiKeyRecord struct {
 	ID     string
 	Name   string
@@ -188,6 +190,15 @@ func NameFromContext(ctx context.Context) string {
 	return v
 }
 
+// ScKey is the context key for user ID.
+const scKey ctxKey = "auth_id"
+
+// ScopesFromContext returns the authenticated scopes stored in the context.
+func ScopesFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyScopes).(string)
+	return v
+}
+
 func hashKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
@@ -224,9 +235,9 @@ func hasScopes(actual string, required ...string) bool {
 		return true
 	}
 	for _, req := range required {
-		if _, ok := set[strings.ToLower(req)]; !ok {
-			return false
+		if _, ok := set[strings.ToLower(req)]; ok {
+			return true
 		}
 	}
-	return true
+	return false
 }
