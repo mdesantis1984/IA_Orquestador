@@ -1,6 +1,5 @@
 // Package db handles database initialization and migrations.
-// By default the SQLite driver is used. Build with -tags postgres
-// to use PostgreSQL instead.
+// PostgreSQL is the only supported backend.
 package db
 
 import (
@@ -14,9 +13,7 @@ import (
 
 // Config holds database configuration.
 type Config struct {
-	// Path is the SQLite file path (ignored when Driver=="postgres").
-	Path string
-	// Driver selects the backend: "sqlite" (default) or "postgres".
+	// Driver selects the backend. Only "postgres" is supported.
 	Driver string
 	// DSN is the full connection string for Postgres.
 	// Example: "postgres://user:pass@host:5432/dbname?sslmode=require"
@@ -26,44 +23,28 @@ type Config struct {
 // Open opens a database connection using the configured driver.
 func Open(cfg Config) (*sql.DB, error) {
 	switch strings.ToLower(cfg.Driver) {
-	case "postgres", "postgresql":
+	case "postgres", "postgresql", "":
 		return openPostgres(cfg)
 	default:
-		return openSQLite(cfg)
+		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
 }
 
 // Initialize runs initial setup and migrations.
-// driver is the same string passed to Open ("sqlite" or "postgres").
-func Initialize(ctx context.Context, database *sql.DB, driver string) error {
+// Only PostgreSQL is supported; the driver parameter is kept for call-site
+// compatibility but is otherwise ignored.
+func Initialize(ctx context.Context, database *sql.DB, _ string) error {
 	log.Println("[DB] Initializing database schema")
 
-	pg := strings.ToLower(driver) == "postgres" || strings.ToLower(driver) == "postgresql"
-
-	if pg {
-		if err := postgresInit(ctx, database); err != nil {
-			return err
-		}
-	} else {
-		// SQLite WAL pragmas
-		for _, pragma := range []string{
-			"PRAGMA journal_mode = WAL",
-			"PRAGMA synchronous = NORMAL",
-			"PRAGMA temp_store = MEMORY",
-			"PRAGMA cache_size = -2000",
-			"PRAGMA foreign_keys = ON",
-		} {
-			if _, err := database.ExecContext(ctx, pragma); err != nil {
-				return fmt.Errorf("failed to set pragma: %w", err)
-			}
-		}
+	if err := postgresInit(ctx, database); err != nil {
+		return err
 	}
 
 	if err := createMigrationsTable(ctx, database); err != nil {
 		return err
 	}
 
-	if err := runMigrations(ctx, database, pg); err != nil {
+	if err := runMigrations(ctx, database); err != nil {
 		return err
 	}
 
@@ -82,27 +63,22 @@ func createMigrationsTable(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
-// runMigrations applies all pending migrations.
-func runMigrations(ctx context.Context, db *sql.DB, pg bool) error {
+// runMigrations applies all pending migrations in order.
+func runMigrations(ctx context.Context, db *sql.DB) error {
 	type migVersion struct {
 		version string
-		up      func(context.Context, *sql.Tx, bool) error
+		up      func(context.Context, *sql.Tx) error
 	}
 	migrations := []migVersion{
 		{"v1_init", migrationV1Init},
 		{"v2_api_keys", migrationV2ApiKeys},
 	}
 
-	recordSQL := "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)"
-	checkSQL := "SELECT COUNT(*) FROM schema_migrations WHERE version = ?"
-	if pg {
-		recordSQL = "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)"
-		checkSQL = "SELECT COUNT(*) FROM schema_migrations WHERE version = $1"
-	}
-
 	for _, m := range migrations {
 		var count int
-		if err := db.QueryRowContext(ctx, checkSQL, m.version).Scan(&count); err != nil {
+		if err := db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM schema_migrations WHERE version = $1",
+			m.version).Scan(&count); err != nil {
 			return fmt.Errorf("check migration %s: %w", m.version, err)
 		}
 		if count > 0 {
@@ -117,12 +93,14 @@ func runMigrations(ctx context.Context, db *sql.DB, pg bool) error {
 			return fmt.Errorf("begin tx for %s: %w", m.version, err)
 		}
 
-		if err := m.up(ctx, tx, pg); err != nil {
+		if err := m.up(ctx, tx); err != nil {
 			tx.Rollback() //nolint:errcheck
 			return fmt.Errorf("migration %s failed: %w", m.version, err)
 		}
 
-		if _, err = tx.ExecContext(ctx, recordSQL, m.version, nowUnix()); err != nil {
+		if _, err = tx.ExecContext(ctx,
+			"INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
+			m.version, nowUnix()); err != nil {
 			tx.Rollback() //nolint:errcheck
 			return fmt.Errorf("record migration %s: %w", m.version, err)
 		}
@@ -137,19 +115,8 @@ func runMigrations(ctx context.Context, db *sql.DB, pg bool) error {
 	return nil
 }
 
-// migration represents a database migration
-type migration struct {
-	version string
-	up      func(context.Context, *sql.Tx) error
-}
-
-// migrationV1Init creates the initial schema (portable SQL for SQLite and Postgres).
-func migrationV1Init(ctx context.Context, tx *sql.Tx, pg bool) error {
-	auditID := "id INTEGER PRIMARY KEY AUTOINCREMENT"
-	if pg {
-		auditID = "id BIGSERIAL PRIMARY KEY"
-	}
-
+// migrationV1Init creates the initial schema for PostgreSQL.
+func migrationV1Init(ctx context.Context, tx *sql.Tx) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS skills (
 			id         TEXT   PRIMARY KEY,
@@ -191,8 +158,8 @@ func migrationV1Init(ctx context.Context, tx *sql.Tx, pg bool) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_user_expires ON tokens(user_id, expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_expires      ON tokens(expires_at)`,
-		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS audit_logs (
-			%s,
+		`CREATE TABLE IF NOT EXISTS audit_logs (
+			id         BIGSERIAL PRIMARY KEY,
 			timestamp  BIGINT NOT NULL,
 			user_id    TEXT,
 			client_id  TEXT,
@@ -200,7 +167,7 @@ func migrationV1Init(ctx context.Context, tx *sql.Tx, pg bool) error {
 			resource   TEXT,
 			request_id TEXT,
 			metadata   TEXT
-		)`, auditID),
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_user      ON audit_logs(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_action    ON audit_logs(action)`,
@@ -214,18 +181,18 @@ func migrationV1Init(ctx context.Context, tx *sql.Tx, pg bool) error {
 	return nil
 }
 
-// nowUnix returns current Unix timestamp
+// nowUnix returns the current Unix timestamp.
 func nowUnix() int64 {
 	return nowTime().Unix()
 }
 
-// nowTime returns current time (mockable for tests)
+// nowTime returns current time (replaceable in tests).
 var nowTime = func() time.Time {
 	return time.Now()
 }
 
 // migrationV2ApiKeys adds the api_keys table for HTTP auth.
-func migrationV2ApiKeys(ctx context.Context, tx *sql.Tx, _ bool) error {
+func migrationV2ApiKeys(ctx context.Context, tx *sql.Tx) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS api_keys (
 			id         TEXT    PRIMARY KEY,

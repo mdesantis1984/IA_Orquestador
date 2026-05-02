@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/thiscloud/ia-orquestador/internal/admin"
+	"github.com/thiscloud/ia-orquestador/internal/audit"
 	"github.com/thiscloud/ia-orquestador/internal/auth"
 	"github.com/thiscloud/ia-orquestador/internal/db"
 	memory "github.com/thiscloud/ia-orquestador/internal/engram"
@@ -32,8 +35,7 @@ import (
 var (
 	transportMode  = flag.String("transport", "stdio", "Transport mode: stdio or http")
 	httpAddr       = flag.String("http-addr", ":8080", "HTTP server address")
-	dbPath         = flag.String("db", "./orchestrator.db", "SQLite database path")
-	dbDriver       = flag.String("db-driver", "sqlite", "Database driver: sqlite or postgres")
+	dbDriver       = flag.String("db-driver", "postgres", "Database driver: postgres")
 	dbDSN          = flag.String("db-dsn", "", "PostgreSQL DSN (required when -db-driver=postgres)")
 	memoryURL      = flag.String("memory-url", "http://127.0.0.1:7438", "IA_Recuerdo service URL")
 	memoryKey      = flag.String("memory-key", "", "IA_Recuerdo API key (X-Api-Key header)")
@@ -69,7 +71,6 @@ func main() {
 
 	// Initialize database
 	database, err := db.Open(db.Config{
-		Path:   *dbPath,
 		Driver: *dbDriver,
 		DSN:    *dbDSN,
 	})
@@ -87,7 +88,7 @@ func main() {
 
 	// -create-token flag: generate a new API key and exit
 	if *createToken != "" {
-		key, err := authValidator.Generate(ctx, *createToken)
+		key, err := authValidator.Generate(ctx, *createToken, "admin")
 		if err != nil {
 			log.Fatalf("Failed to create API key: %v", err)
 		}
@@ -97,7 +98,7 @@ func main() {
 
 	// Bootstrap: if no API keys exist yet, generate one automatically
 	if count, _ := authValidator.CountKeys(ctx); count == 0 {
-		key, err := authValidator.Generate(ctx, "bootstrap")
+		key, err := authValidator.Generate(ctx, "bootstrap", "admin")
 		if err != nil {
 			log.Fatalf("Failed to generate bootstrap API key: %v", err)
 		}
@@ -117,6 +118,12 @@ func main() {
 	skillRegistry := skills.NewRegistry(database)
 	if err := skillRegistry.LoadAll(ctx); err != nil {
 		log.Fatalf("Failed to load skills: %v", err)
+	}
+	if err := seedSkillsFromDisk(ctx, skillRegistry); err != nil {
+		log.Fatalf("Failed to seed skills: %v", err)
+	}
+	if err := skillRegistry.LoadAll(ctx); err != nil {
+		log.Fatalf("Failed to reload skills after seed: %v", err)
 	}
 	met.SetSkillsLoaded(int64(skillRegistry.Count()))
 
@@ -139,10 +146,13 @@ func main() {
 		trans = transport.NewSTDIOTransport(dispatcher)
 	case "http":
 		httpTrans := transport.NewHTTPTransport(*httpAddr, dispatcher)
-		adminHandler := admin.New(skillRegistry, authValidator)
+		auditLogger := audit.NewLogger(database)
+		adminHandler := admin.New(skillRegistry, authValidator, auditLogger)
 		httpTrans.OnRoutes(func(mux *http.ServeMux) {
 			adminHandler.RegisterRoutes(mux)
-			mux.HandleFunc("GET /metrics", met.Handler())
+			mux.Handle("GET /metrics", authValidator.WithScopes("metrics", "admin")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				met.Handler().ServeHTTP(w, r)
+			})))
 			// Standard MCP Streamable HTTP endpoint — used by VS Code / AI agents.
 			orch.RegisterMCPRoutes(mux)
 		})
@@ -186,23 +196,116 @@ func main() {
 
 // Orchestrator manages MCP operations
 type Orchestrator struct {
-	skills     *skills.Registry
-	memory     *memory.Client
-	db         *sql.DB
-	met        *metrics.Metrics
-	sessions   map[string]*types.Session
-	sessionsMu sync.RWMutex
+	skills          *skills.Registry
+	memory          *memory.Client
+	db              *sql.DB
+	met             *metrics.Metrics
+	sessions        map[string]*types.Session
+	sessionsMu      sync.RWMutex
+	runningRequests map[string]context.CancelFunc
+	runningMu       sync.RWMutex
 }
 
 // NewOrchestrator creates a new orchestrator instance
 func NewOrchestrator(skillReg *skills.Registry, memClient *memory.Client, database *sql.DB, met *metrics.Metrics) *Orchestrator {
 	return &Orchestrator{
-		skills:   skillReg,
-		memory:   memClient,
-		db:       database,
-		met:      met,
-		sessions: make(map[string]*types.Session),
+		skills:          skillReg,
+		memory:          memClient,
+		db:              database,
+		met:             met,
+		sessions:        make(map[string]*types.Session),
+		runningRequests: make(map[string]context.CancelFunc),
 	}
+}
+
+func seedSkillsFromDisk(ctx context.Context, skillReg *skills.Registry) error {
+	baseDir, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	baseDir = filepath.Dir(baseDir)
+	log.Printf("[SKILLS] Seeding from executable dir: %s", baseDir)
+	paths := []string{
+		filepath.Join(baseDir, "skills"),
+		filepath.Join(filepath.Dir(baseDir), "skills"),
+		filepath.Join(filepath.Dir(filepath.Dir(baseDir)), "skills"),
+	}
+
+	var skillsDir string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			skillsDir = p
+			break
+		}
+	}
+	if skillsDir == "" {
+		return fmt.Errorf("read skills dir: not found in %v", paths)
+	}
+	log.Printf("[SKILLS] Using skills dir: %s", skillsDir)
+
+	return filepath.WalkDir(skillsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) != "metadata.json" {
+			return nil
+		}
+		log.Printf("[SKILLS] Found metadata: %s", path)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+
+		var meta struct {
+			Name        string   `json:"name"`
+			Version     string   `json:"version"`
+			Type        string   `json:"type"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+		}
+		if err := json.Unmarshal(data, &meta); err != nil || meta.Name == "" {
+			log.Printf("[SKILLS] Skipping invalid metadata: %s", path)
+			return nil
+		}
+
+		if _, err := skillReg.GetByName(meta.Name, meta.Version); err == nil {
+			log.Printf("[SKILLS] Already seeded: %s@%s", meta.Name, meta.Version)
+			return nil
+		}
+
+		status := types.SkillStatusActive
+		if meta.Type == "" {
+			meta.Type = "sdd"
+		}
+
+		payload, _ := json.Marshal(map[string]interface{}{
+			"description": meta.Description,
+			"tags":        meta.Tags,
+		})
+
+		skill := &types.Skill{
+			Name:       meta.Name,
+			Version:    meta.Version,
+			Type:       types.SkillType(meta.Type),
+			Entrypoint:  filepath.Join(filepath.Dir(path), "SKILL.md"),
+			Path:       filepath.Dir(path),
+			Metadata:   payload,
+			Status:     status,
+		}
+		if meta.Type != "sdd" && meta.Type != "dotnet" {
+			skill.Entrypoint = filepath.Join(filepath.Dir(path), "skill.sh")
+		}
+		if err := skillReg.Create(ctx, skill); err != nil {
+			return fmt.Errorf("seed skill %s: %w", meta.Name, err)
+		}
+		log.Printf("[SKILLS] Seeded skill: %s@%s", meta.Name, meta.Version)
+		return nil
+	})
 }
 
 // RegisterHandlers registers all MCP JSON-RPC handlers
@@ -211,6 +314,7 @@ func (o *Orchestrator) RegisterHandlers(d *jsonrpc.Dispatcher) {
 	d.Register("mcp.tools.list", o.handleToolsList)
 	d.Register("mcp.tools.call", o.handleToolsCall)
 	d.Register("mcp.tools.status", o.handleToolsStatus)
+	d.Register("mcp.tools.cancel", o.handleToolsCancel)
 }
 
 // handleInitialize handles mcp.initialize requests
@@ -344,6 +448,15 @@ func (o *Orchestrator) handleToolsCall(ctx context.Context, params json.RawMessa
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
+	// Touch session to mark activity
+	if req.SessionID != "" {
+		o.sessionsMu.Lock()
+		if sess, ok := o.sessions[req.SessionID]; ok {
+			sess.LastSeenAt = time.Now()
+		}
+		o.sessionsMu.Unlock()
+	}
+
 	// Get skill
 	skill, err := o.skills.Get(req.ToolID)
 	if err != nil {
@@ -353,7 +466,17 @@ func (o *Orchestrator) handleToolsCall(ctx context.Context, params json.RawMessa
 	log.Printf("[MCP] Tool call: skill=%s session=%s", skill.Name, req.SessionID)
 
 	requestID := uuid.New().String()
-	res, err := executor.Execute(ctx, skill, req.Input, req.CallOptions.TimeoutMs)
+	execCtx, cancel := context.WithCancel(ctx)
+	o.runningMu.Lock()
+	o.runningRequests[requestID] = cancel
+	o.runningMu.Unlock()
+	defer func() {
+		o.runningMu.Lock()
+		delete(o.runningRequests, requestID)
+		o.runningMu.Unlock()
+	}()
+
+	res, err := executor.Execute(execCtx, skill, req.Input, req.CallOptions.TimeoutMs)
 	if err != nil {
 		return nil, err
 	}
@@ -398,5 +521,32 @@ func (o *Orchestrator) handleToolsStatus(_ context.Context, params json.RawMessa
 		"status":    "done",
 		"requestId": req.RequestID,
 		"progress":  1.0,
+	}, nil
+}
+
+// handleToolsCancel handles mcp.tools.cancel requests
+func (o *Orchestrator) handleToolsCancel(ctx context.Context, params json.RawMessage) (interface{}, error) {
+	var req struct {
+		RequestID string `json:"requestId"`
+	}
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+
+	o.runningMu.RLock()
+	cancel, exists := o.runningRequests[req.RequestID]
+	o.runningMu.RUnlock()
+
+	if !exists {
+		return map[string]interface{}{
+			"status":    "not_found",
+			"requestId": req.RequestID,
+		}, nil
+	}
+
+	cancel()
+	return map[string]interface{}{
+		"status":    "cancelled",
+		"requestId": req.RequestID,
 	}, nil
 }

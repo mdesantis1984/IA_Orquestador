@@ -1,42 +1,34 @@
-﻿# OrquestadorServidorMCP Configuration
+﻿# IA_Orquestador Configuration Example
+# Copy to config.yaml and adjust for your environment.
+# Note: the binary uses CLI flags, not this file — it is documentation only.
 
 # Server settings
 server:
-  transport: "http"  # stdio or http
+  transport: "http"       # stdio or http
   http_addr: ":8080"
-  
-# Database settings
+
+# Database (PostgreSQL only)
 database:
-  path: "./orchestrator.db"
-  
+  dsn: "postgres://ia_orquestador:changeme@CT205_IP:5432/ia_orquestador?sslmode=require"
+
 # IA_Recuerdo integration
 ia_recuerdo:
-  url: "http://127.0.0.1:7438"
+  url: "http://CT204_IP:7438"
   project: "ia-orquestador"
-  
+  # api_key: ""   # set via -memory-key flag or IA_MEMORY_KEY env var
+
+# Observability
+tracing:
+  exporter: "none"        # none | stdout | otlp | both
+  otlp_endpoint: "localhost:4318"
+
+metrics:
+  enabled: true           # GET /metrics endpoint (Prometheus text format)
+
+# Skill hot-reload
+skill_reload_interval: "30s"   # 0 to disable
+
 # Logging
 logging:
-  level: "info"  # debug, info, warn, error
-  format: "json"  # json or text
-  
-# Rate limiting
-rate_limits:
-  per_user_rpm: 60
-  per_skill_rpm: 30
-  concurrent_calls: 10
-  
-# OAuth / OIDC (TODO)
-auth:
-  enabled: false
-  issuer_url: "https://auth.example.com"
-  client_id: ""
-  jwks_cache_ttl: 300
-  
-# Observability (TODO)
-metrics:
-  enabled: true
-  prometheus_addr: ":9090"
-  
-tracing:
-  enabled: false
-  otlp_endpoint: "http://localhost:4317"
+  level: "info"           # debug, info, warn, error
+  format: "json"

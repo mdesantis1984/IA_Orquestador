@@ -1,6 +1,6 @@
 ﻿# IA_Orquestador
 
-> CT203: servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y se conecta a memoria persistente mediante **IA_Recuerdo** en CT204.
+> Servidor de orquestación MCP (Model Context Protocol) escrito en Go. Registra skills/tools dinámicamente, gestiona sesiones de agentes IA y se integra con **IA_Recuerdo** para memoria persistente.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org)
@@ -10,11 +10,11 @@
 
 ## ¿Qué hace?
 
-**IA_Orquestador** actúa como capa de infraestructura IA en CT203:
+**IA_Orquestador** expone un servidor JSON-RPC 2.0 compatible con MCP que actúa como capa de infraestructura IA:
 
 - Registra y ejecuta **skills** (herramientas de IA) dinámicamente
 - Soporta transporte **STDIO** (agentes locales) y **HTTP + SSE + WebSocket** (agentes remotos)
-- Persiste estado en **SQLite** (default) o **PostgreSQL** (multi-nodo)
+- Persiste estado en **PostgreSQL**
 - Se integra con **IA_Recuerdo** para memoria persistente entre sesiones
 - Expone **API REST de administración** (`/api/v1/skills`)
 - Autenticación por **API key** con bootstrap automático en primer arranque
@@ -36,7 +36,7 @@ Cliente IA (Claude / Cursor / VS Code Copilot)
          │  Skill Registry      │──►  Proceso externo (bash/sh)
          │  Session Manager     │
          │  Auth (API Key)      │◄─── X-Api-Key header
-         │  SQLite / PostgreSQL │
+          │     PostgreSQL       │
          │  Metrics /metrics    │──►  Prometheus
          └──────────┬───────────┘
                     │ HTTP
@@ -53,25 +53,22 @@ Cliente IA (Claude / Cursor / VS Code Copilot)
 code/ia-orquestador/
 ├── cmd/orchestrator/       # main.go — flags, bootstrap, wiring
 ├── internal/
-│   ├── transport/          # STDIO, HTTP+SSE, WebSocket
+│   ├── transport/          # STDIO, HTTP+SSE
 │   ├── jsonrpc/            # Dispatcher JSON-RPC 2.0
 │   ├── skills/             # Registro dinámico de skills
-│   ├── engram/             # Cliente HTTP IA_Recuerdo
-│   ├── db/                 # SQLite + PostgreSQL
+│   ├── db/                 # PostgreSQL
 │   ├── auth/               # API key (SHA-256, bootstrap automático)
 │   ├── executor/           # Ejecución de skills externos
 │   ├── admin/              # API REST /api/v1/skills
-│   └── metrics/            # Endpoint /metrics (Prometheus)
+│   ├── metrics/            # Endpoint /metrics (Prometheus)
+│   ├── audit/              # Logging de auditoría
+│   └── tracing/            # OpenTelemetry integration
 ├── pkg/
 │   ├── types/              # Tipos MCP
 │   └── errors/             # Códigos de error MCP
-├── skills/
-│   ├── dotnet/             # 18 skills .NET (Blazor, MAUI, Clean Arch, etc.)
-│   ├── sdd/                # 9 skills SDD (Spec-Driven Development)
-│   └── echo-skill/         # Skill de ejemplo
+├── skills/                 # Skills locales (metadata.json + SKILL.md)
 ├── deploy/
-│   ├── systemd/            # Unit file para Linux / Proxmox CT
-│   └── kubernetes/         # Manifiestos K8s
+│   └── systemd/            # Unit file para Linux / Proxmox CT
 ├── configs/                # config.example.yaml
 ├── migrations/             # Migraciones de DB
 └── scripts/                # register-skill.sh, test-e2e.sh
@@ -84,7 +81,7 @@ code/ia-orquestador/
 ```bash
 cd code/ia-orquestador
 
-make build          # SQLite, desarrollo
+make build          # Go, desarrollo
 make build-linux    # Linux amd64 (cross-compile)
 make build-postgres # Linux amd64, PostgreSQL
 ```
@@ -129,8 +126,8 @@ Todos los parámetros se pasan como flags:
 |------|---------|-------------|
 | `-transport` | `stdio` | `stdio` o `http` |
 | `-http-addr` | `:8080` | Dirección del servidor HTTP |
-| `-db` | `./orchestrator.db` | Ruta SQLite |
-| `-db-driver` | `sqlite` | `sqlite` o `postgres` |
+| `-db` | `postgres://...` | DSN PostgreSQL |
+| `-db-driver` | `postgres` | Solo `postgres` |
 | `-db-dsn` | `` | DSN PostgreSQL |
 | `-memory-url` | `http://127.0.0.1:7438` | URL de IA_Recuerdo |
 | `-project` | `ia-orquestador` | Nombre de proyecto en IA_Recuerdo |
@@ -283,13 +280,15 @@ scripts/bulk-register-skills.sh skills/dotnet/
 
 ## Skills incluidos
 
+Total: **26 skills** — 18 .NET + 8 SDD
+
 ### .NET (18 skills)
 
-`blazor-server` · `blazor-wasm` · `csharp-expert` · `dotnet-architecture` · `minimal-api` · `microservices-dotnet` · `rest-webapi` · `mudblazor` · `maui-expert` · `mvvm-patterns` · `mvc-dotnet` · `onion-architecture` · `solid-principles` · `wpf-expert` · `aspire-dotnet` · `aspx-legacy` · `soap-wcf`
+`aspire-dotnet` · `aspx-legacy` · `blazor-server` · `blazor-wasm` · `csharp-expert` · `dotnet-architecture` · `minimal-api` · `microservices-dotnet` · `mudblazor` · `maui-expert` · `mvvm-patterns` · `mvc-dotnet` · `onion-architecture` · `rest-webapi` · `soap-wcf` · `solid-principles` · `wpf-expert`
 
-### SDD — Spec-Driven Development (9 skills)
+### SDD — Spec-Driven Development (8 skills)
 
-`sdd-init` · `sdd-explore` · `sdd-design` · `sdd-spec` · `sdd-propose` · `sdd-tasks` · `sdd-apply` · `sdd-verify` · `sdd-archive`
+`sdd-init` · `sdd-explore` · `sdd-design` · `sdd-propose` · `sdd-spec` · `sdd-tasks` · `sdd-apply` · `sdd-verify` · `sdd-archive`
 
 ---
 
@@ -319,7 +318,7 @@ systemctl enable --now ia-orquestador
 systemctl status ia-orquestador
 ```
 
-El servicio escucha en `:7440` en CT203 (configurable en el unit file).
+El servicio escucha en `:7438` por defecto (configurable en el unit file).
 
 ---
 
@@ -340,29 +339,37 @@ make vet        # go vet
 |------------|--------|
 | JSON-RPC 2.0 dispatcher | ✅ |
 | STDIO | ✅ |
-| HTTP + SSE | ✅ |
-| WebSocket | ✅ |
+| HTTP + SSE (MCP 2025-03-26) | ✅ |
 | Skill registry + ejecución | ✅ |
+| Skill hot-reload desde disk | ✅ |
+| Audit logging | ✅ |
 | IA_Recuerdo integration | ✅ |
-| SQLite (WAL) | ✅ |
-| PostgreSQL | ✅ build tag `postgres` |
+| PostgreSQL | ✅ |
 | API REST admin | ✅ |
 | Auth API key + Bearer token | ✅ |
 | Métricas Prometheus `/metrics` | ✅ |
 | OpenTelemetry traces (stdout/OTLP) | ✅ |
-| Skill hot-reload (polling DB) | ✅ |
+| MCP tools/cancel support | ✅ |
+| WebSocket (legacy) | ⏸ deprecated |
 
 ---
 
-## Notas
+## Agradecimientos
 
-- CT203 es el orquestador.
-- CT204 es la memoria persistente.
-- `-memory-url` apunta a `IA_Recuerdo`; `Engram` queda solo como nombre histórico del paquete interno.
+Este proyecto usa **IA_Recuerdo** como memoria persistente y se inspira en los patrones SDD de **Alan Buscaglia** y la comunidad **Gentleman Programming**.
+
+| Proyecto | Descripción |
+|----------|-------------|
+| [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) ⭐ 1.6k | Stack IA completo para cualquier agente |
+| [Gentleman Skills](https://github.com/Gentleman-Programming/Gentleman-Skills) | Skills curados para Claude Code, OpenCode, VS Code |
+| [Agent Teams Lite](https://github.com/Gentleman-Programming/agent-teams-lite) | Orquestación SDD, 9 sub-agentes, zero deps |
+
+🎥 [YouTube @GentlemanProgramming](https://www.youtube.com/@GentlemanProgramming) · 🌐 [alan-buscaglia.vercel.app](https://alan-buscaglia.vercel.app/home) · 🔗 [doras.to/gentleman-programming](https://doras.to/gentleman-programming)
+
+> *"Concepts over code. Foundations over frameworks."* — Alan Buscaglia
 
 ---
 
 ## Licencia
 
 [MIT](LICENSE) © 2026 mdesantis1984
-

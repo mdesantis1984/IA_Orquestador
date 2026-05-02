@@ -6,7 +6,6 @@
 bin/
 dist/
 
-# SQLite databases and WAL files
 *.db
 *.db-shm
 *.db-wal

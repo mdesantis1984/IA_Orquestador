@@ -171,7 +171,7 @@ func (r *Registry) Create(ctx context.Context, skill *types.Skill) error {
 	// Insert into database
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO skills (id, name, version, type, entrypoint, path, metadata, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`,
 		skill.ID,
 		skill.Name,
@@ -237,8 +237,8 @@ func (r *Registry) Update(ctx context.Context, id string, updates map[string]int
 	// Update database
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE skills
-		SET name = ?, version = ?, status = ?, metadata = ?, updated_at = ?
-		WHERE id = ?
+		SET name = $1, version = $2, status = $3, metadata = $4, updated_at = $5
+		WHERE id = $6
 	`,
 		updatedSkill.Name,
 		updatedSkill.Version,
@@ -268,7 +268,7 @@ func (r *Registry) Update(ctx context.Context, id string, updates map[string]int
 func (r *Registry) Delete(ctx context.Context, id string, hard bool) error {
 	if hard {
 		// Hard delete from database
-		_, err := r.db.ExecContext(ctx, "DELETE FROM skills WHERE id = ?", id)
+		_, err := r.db.ExecContext(ctx, "DELETE FROM skills WHERE id = $1", id)
 		if err != nil {
 			return fmt.Errorf("failed to delete skill: %w", err)
 		}

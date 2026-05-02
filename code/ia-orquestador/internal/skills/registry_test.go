@@ -4,15 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/thiscloud/ia-orquestador/pkg/types"
-	_ "modernc.org/sqlite"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	dsn := os.Getenv("IA_TEST_PG_DSN")
+	if dsn == "" {
+		t.Skip("IA_TEST_PG_DSN not set")
+	}
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
@@ -29,7 +34,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			metadata TEXT,
 			status TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL,
+			updated_at BIGINT NOT NULL,
 			UNIQUE(name, version)
 		)
 	`)
